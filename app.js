@@ -8,9 +8,8 @@ require('./database/db');
 
 app.use(cors());
 
-const users = require('./routes/users');
-
-app.use('/api/user', users)
+app.use('/api/user', require('./routes/users'))
+app.use('/api/auth', require('./routes/auth'))
 
 app.listen(port, () =>  {
     console.log(`Working on port ${port}`);

@@ -1,21 +1,17 @@
 const User = require('../model/users');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
-const nodemailer = require("nodemailer");
 const bcrypt = require('bcrypt');
 const moment = require('moment');
-const { createLog } = require('../controllers/log');
 require('dotenv').config();
 const secretToken = process.env.SECRET_TOKEN
-const emailUser = process.env.EMAIL_USER
-const emailPassword = process.env.EMAIL_PASSWORD
 
 const getUser = async (req, res) => {
   try {
     const users = await User.find({})
     res.status(200).send(users);
   } catch (error) {
-    res.status(206).json({ error: error.message });
+    res.status(500).json({ error: error.message });
   }
 }
 
@@ -52,13 +48,16 @@ const getUserEspecifico = async (req, res) => {
 const getUserEspecificoId = async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) {
-    return res.status(206).send('Invalid user ID');
+    return res.status(401).send('Invalid user ID');
   } else {
     try {
       const user = await User.findById(id);
+      if (!user) {
+        res.status(404).json({});    
+      }
       res.status(200).send(user);
     } catch (error) {
-      res.status(206).json({ error: error.message });
+      res.status(500).json({ error: error.message });
     }
   }
 }
@@ -70,6 +69,7 @@ const searchResults = async (req, res) => {
     res.status(400).json({})
     return
   }
+
   try {
     const users = await User.find({
       $or: [
@@ -86,96 +86,17 @@ const searchResults = async (req, res) => {
   }
 }
 
-const loginUser = async (req, res) => {
-  const { email, password } = req.body;
-
-  if (!email) {
-    return res.status(400).json({ error:"Email can't be empty" });
-  }
-
-  if (!password) {
-    return res.status(400).json({ error:"Password can't be empty" });
-  }
-
-  try {
-    const user = await User.findOne({ email });
-    
-    if (!user || !user.status ) {
-        return res.status(401).json({ error:"Datos incorrectos." });
-    }
-
-    const validPassword = bcrypt.compareSync(password, user.password);
-    if (!validPassword) {
-        return res.status(401).json({ error:"Datos incorrectos." });
-    }
-
-    const token = jwt.sign({ userId: user._id, permissions: user.permissions }, secretToken, { expiresIn: '1y' });
-    
-    res.status(200).json({ token });
-
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({
-        error: error.message,
-    });
-  }
-}
-
 const deleteUser = async (req, res) => {
   const { id } = req.body
   if (id) {
     const user = await User.findById(id)
-    await createLog(`${user.email} fue eliminado.`)
+    // await createLog(`${user.email} fue eliminado.`)
     await User.findByIdAndDelete(id);
     res.status(200).send(`Se elimino el usuario con éxito.`)
   } else{
     res.status(206).send(`No id.`)
   }
 }
-
-const getRankingTMD = async (req, res) => {
-  try {
-    const users = await User.find({});
-    const groupByCategory = users.reduce((group, user) => {
-      const { venture } = user;
-      group[venture] = group[venture] ?? [];
-      group[venture].push(user);
-      return group;
-    }, {});
-
-    const venturesArray = Object.entries(groupByCategory).map(([venture, users]) => ({
-      venture,
-      users,
-    }));
-
-    const rankedVentures = venturesArray
-      .filter((ventureObj) => ventureObj.venture !== 'Undefined')
-      .map((ventureObj) => {
-        const totalScores = ventureObj.users.map((user) =>
-          user.FirstTMDTest.totalScore !== 'Undefined' ? parseInt(user.FirstTMDTest.totalScore) : 0
-        );
-
-        const averageScore = Math.round(
-          totalScores.reduce((sum, score) => sum + score, 0) / totalScores.length
-        );
-
-        const sortedUsers = ventureObj.users.sort((a, b) =>
-          parseInt(b.FirstTMDTest.totalScore) - parseInt(a.FirstTMDTest.totalScore)
-        );
-
-        return {
-          venture: ventureObj.venture,
-          users: sortedUsers,
-          averageScore: averageScore,
-        };
-      })
-      .sort((a, b) => b.averageScore - a.averageScore);
-
-    res.status(200).json(rankedVentures);
-  } catch (error) {
-    res.status(500).json(error);
-  }
-};
 
 const changeUserStatus = async (req, res) => {
   const { id } = req.body
@@ -188,10 +109,10 @@ const changeUserStatus = async (req, res) => {
 
       if (user.status){
         newStatus = false
-        await createLog(`El usuario ${user.email} fue suspendido.`)
+        // await createLog(`El usuario ${user.email} fue suspendido.`)
       } else{
         newStatus = true
-        await createLog(`El usuario ${user.email} fue re-activado.`)
+        // await createLog(`El usuario ${user.email} fue re-activado.`)
       }
 
       await User.findByIdAndUpdate(id, {
@@ -199,10 +120,10 @@ const changeUserStatus = async (req, res) => {
       })
       res.status(200).send(`Se actualizo el usuario con éxito.`)
     } catch (error) {
-      res.status(206).send(`Ocurrió un error inesperado.`)
+      res.status(500).send(`Ocurrió un error inesperado.`)
     }
   } else{
-    res.status(206).send(`Ocurrió un error inesperado.`)
+    res.status(500).send(`Ocurrió un error inesperado.`)
   }
 };
 
@@ -227,7 +148,7 @@ const checkEmailExists = async (req, res) => {
 }
 
 const createUser = async (req, res) => {
-  const { email, password, birthdate, biography, location, name, surname, jobPosition } = req.body;
+  const { email, password, birthdate, location, name, surname } = req.body;
   const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/i;
   const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{6,25}$/;
   
@@ -253,129 +174,23 @@ const createUser = async (req, res) => {
   const permissions = 'user';
   const status = true;
   const startDate = moment().format('DD/MM/YYYY');
-  const totalScore = 0;
-  const welcomeViewed = true;
-  const TMDquestionnaireEnabled = true;
-  const TMD = false;
+  const welcomeMessage = true;
   
   const newUser = new User({
       name,
       surname,
       email,
       password: passwordEncripted,
-      venture: "Undefined",
       location,
       birthdate,
-      biography,
-      jobPosition,
       startDate,
-      rankingPosition: "Undefined",
-      totalScore,
-      welcomeViewed,
+      welcomeMessage,
       status,
       permissions,
-      TMD,
-      TMDquestionnaireEnabled,
-      LeccionesCompletasTMD: [],
-      InstruccionesCompletasTMD: [],
-      FirstTMDTest: {
-        date: "Undefined",
-        section1: {
-          question1: "",
-          question1Justification: "",
-          question2: "",
-          question2Justification: "",
-          question3: "",
-          question3Justification: "",
-          question4: "",
-          question4Justification: "",
-          question5: "",
-          question5Justification: "",
-          question6: "",
-          question6Justification: "",
-          question7: "",
-          question7Justification: "",
-          sectionScore: 0,
-        },
-        section2: {
-          question8: "",
-          question8Justification: "",
-          question9: "",
-          question10: "",
-          question11: "",
-          question12: "",
-          sectionScore: 0,
-        },
-        section3: {
-          question13: "",
-          question14: "",
-          question15: "",
-          question16: "",
-          question17: "",
-          question18: "",
-          question19: "",
-          question20: "",
-          question21: "",
-          sectionScore: 0,
-        },
-        section4: {
-          question22: "",
-          question23: "",
-          question23Justification: "",
-          question56: "",
-          question24: "",
-          question25: "",
-          question26: "",
-          question57: "",
-          sectionScore: 0,
-        },
-        section5: {
-          question27: "",
-          question28: "",
-          question29: "",
-          question30: "",
-          question31: "",
-          question32: "",
-          question33: "",
-          question34: "",
-          question35: "",
-          question36: "",
-          question37: "",
-          question38: "",
-          question39: "",
-          question39Justification: "",
-          question40: "",
-          question41: "",
-          question42: "",
-          question43: "",
-          question43Justification: "",
-          sectionScore: 0,
-        },
-        section6: {
-          question44: "",
-          question45: "",
-          question46: "",
-          question47: "",
-          question48: "",
-          question49: "",
-          question49Justification: "",
-          question50: "",
-          question51: "",
-          question52: "",
-          question52Justification: "",
-          question53: "",
-          question53Justification: "",
-          question54: "",
-          question55: "",
-          question55Justification: "",
-          sectionScore: 0,
-        },
-        totalScore: "Undefined",
-      },
     });
     await newUser.save();
     // await sendEmailNewUser(email)
-    await createLog(`Se creo el usuario: ${email}.`)
+    // await createLog(`Se creo el usuario: ${email}.`)
     res.status(200).json({});
   }
 
@@ -523,4 +338,4 @@ const changePassword = async (req, res) => {
   }
 };
 
-module.exports = { createUser, checkEmailExists, getUser, deleteUser, editProfileUser, getUserEspecifico, getUserEspecificoId, loginUser, passwordRecovery, changePassword, changeUserStatus, searchResults, getRankingTMD }
+module.exports = { createUser, checkEmailExists, getUser, deleteUser, editProfileUser, getUserEspecifico, getUserEspecificoId, passwordRecovery, changePassword, changeUserStatus, searchResults }
