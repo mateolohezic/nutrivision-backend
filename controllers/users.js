@@ -133,50 +133,6 @@ const deleteUser = async (req, res) => {
   }
 }
 
-const getRankingTMD = async (req, res) => {
-  try {
-    const users = await User.find({});
-    const groupByCategory = users.reduce((group, user) => {
-      const { venture } = user;
-      group[venture] = group[venture] ?? [];
-      group[venture].push(user);
-      return group;
-    }, {});
-
-    const venturesArray = Object.entries(groupByCategory).map(([venture, users]) => ({
-      venture,
-      users,
-    }));
-
-    const rankedVentures = venturesArray
-      .filter((ventureObj) => ventureObj.venture !== 'Undefined')
-      .map((ventureObj) => {
-        const totalScores = ventureObj.users.map((user) =>
-          user.FirstTMDTest.totalScore !== 'Undefined' ? parseInt(user.FirstTMDTest.totalScore) : 0
-        );
-
-        const averageScore = Math.round(
-          totalScores.reduce((sum, score) => sum + score, 0) / totalScores.length
-        );
-
-        const sortedUsers = ventureObj.users.sort((a, b) =>
-          parseInt(b.FirstTMDTest.totalScore) - parseInt(a.FirstTMDTest.totalScore)
-        );
-
-        return {
-          venture: ventureObj.venture,
-          users: sortedUsers,
-          averageScore: averageScore,
-        };
-      })
-      .sort((a, b) => b.averageScore - a.averageScore);
-
-    res.status(200).json(rankedVentures);
-  } catch (error) {
-    res.status(500).json(error);
-  }
-};
-
 const changeUserStatus = async (req, res) => {
   const { id } = req.body
 
